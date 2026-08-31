@@ -17,6 +17,7 @@ const els = {
   grid: document.getElementById('grid'),
   stats: document.getElementById('stats'),
   countPill: document.getElementById('countPill'),
+  updated: document.getElementById('updated'),
   pageInfo: document.getElementById('pageInfo'),
   prev: document.getElementById('prevBtn'),
   next: document.getElementById('nextBtn'),
@@ -41,12 +42,12 @@ function render(docs, total, page){
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if(currentPage >= totalPages) currentPage = totalPages-1;
   els.grid.innerHTML = docs.map(d=> `
-    <div class="card">
+    <div class="card result-card">
       <div class="left">
         <div class="title" title="${escapeHtml(d.title)}">${escapeHtml(d.title)}</div>
         <div class="meta">
           <span>${escapeHtml(d.company)}</span>
-          <span>${escapeHtml(d.console||'—')}</span>
+          <span>${escapeHtml(d.console||'-')}</span>
           <span>${escapeHtml(d.folder)}</span>
           <span>${escapeHtml(d.size||'')}</span>
           <span>${escapeHtml(d.date||'')}</span>
@@ -58,6 +59,10 @@ function render(docs, total, page){
       </div>
     </div>
   `).join('') || `<div class="pill">No results. Try “zelda”, “mario”, “sonic” or clear filters.</div>`;
+
+  if(window.gsap){
+    gsap.fromTo('.result-card', {opacity:0, y:10}, {opacity:1, y:0, duration:.28, stagger:.018, ease:'power2.out', clearProps:'transform'});
+  }
 
   const start = page * PAGE_SIZE;
   els.stats.textContent = `Showing ${total===0?0:start+1}–${Math.min(start+PAGE_SIZE, total)} of ${total.toLocaleString()} results`;
@@ -92,6 +97,10 @@ function initWorker(){
     if(msg.type==='ready'){
       setLoading(false);
       els.countPill.textContent = `${msg.total.toLocaleString()} files indexed${msg.meta?` · updated ${msg.meta.generatedAt}`:''}`;
+      if(msg.meta?.generatedAt){
+        const date = new Date(msg.meta.generatedAt);
+        els.updated.textContent = `Last scrape: ${Number.isNaN(date.getTime()) ? msg.meta.generatedAt : date.toLocaleString()}`;
+      }
       // populate filters
       msg.companies.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; els.company.appendChild(o); });
       msg.consoles.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; els.console.appendChild(o); });
