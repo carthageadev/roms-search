@@ -12,32 +12,58 @@ self.onmessage = async (e) => {
   const msg = e.data;
   if (msg.type === 'load') {
     try {
-      send('progress', {text: 'Fetching index (48 MB, cached after first load)…'});
-      const res = await fetch(msg.dataUrl);
-      if(!res.ok) throw new Error('Failed to fetch ' + msg.dataUrl + ': ' + res.status);
-      // Stream progress if Content-Length known
-      const total = parseInt(res.headers.get('Content-Length')||'0',10);
-      let buffer;
-      if(res.body && total){
-        const reader = res.body.getReader();
-        let received = 0;
-        const chunks = [];
-        while(true){
-          const {done, value} = await reader.read();
-          if(done) break;
-          chunks.push(value);
-          received += value.length;
-          if(received % (2*1024*1024) < 65536){
-            send('progress', {text: `Downloading ${(received/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB…`});
+      // Prefer compressed .gz (3.3 MB) then .br then raw
+      const tryUrls = [msg.dataUrl + '.gz', msg.dataUrl + '.br', msg.dataUrl];
+      let buffer = null;
+      for(const u of tryUrls){
+        try{
+          send('progress', {text: `Fetching ${u.split('/').pop()}…`});
+          const res = await fetch(u);
+          if(!res.ok) continue;
+          if(u.endsWith('.gz')){
+            send('progress', {text: 'Decompressing gzip…'});
+            // DecompressionStream is native in modern browsers
+            if(typeof DecompressionStream !== 'undefined'){
+              const ds = new DecompressionStream('gzip');
+              const decompressed = res.body.pipeThrough(ds);
+              const text = await new Response(decompressed).text();
+              buffer = JSON.parse(text);
+            } else {
+              // fallback: fetch as arrayBuffer and let server handle? try plain
+              const ab = await res.arrayBuffer();
+              // if no DecompressionStream, we cannot decompress, try next url
+              continue;
+            }
+          } else if(u.endsWith('.br')){
+            // brotli not natively supported via DecompressionStream, skip unless we bundle decoder
+            continue;
+          } else {
+            const total = parseInt(res.headers.get('Content-Length')||'0',10);
+            if(res.body && total){
+              const reader = res.body.getReader();
+              let received = 0;
+              const chunks = [];
+              while(true){
+                const {done, value} = await reader.read();
+                if(done) break;
+                chunks.push(value);
+                received += value.length;
+                if(received % (2*1024*1024) < 65536){
+                  send('progress', {text: `Downloading ${(received/1024/1024).toFixed(1)} / ${(total/1024/1024).toFixed(1)} MB…`});
+                }
+              }
+              const blob = new Blob(chunks);
+              const text = await blob.text();
+              buffer = JSON.parse(text);
+            } else {
+              send('progress', {text: 'Parsing JSON…'});
+              buffer = await res.json();
+            }
           }
-        }
-        const blob = new Blob(chunks);
-        const text = await blob.text();
-        buffer = JSON.parse(text);
-      } else {
-        send('progress', {text: 'Parsing JSON…'});
-        buffer = await res.json();
+          if(buffer) break;
+        }catch(e){ continue; }
       }
+      if(!buffer) throw new Error('Failed to fetch any index variant');
       allDocs = buffer;
       byId = new Map(allDocs.map(d=>[d.id,d]));
       send('progress', {text: `Indexing ${allDocs.length.toLocaleString()} docs…`});

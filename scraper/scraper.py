@@ -171,6 +171,33 @@ def crawl():
 
     return all_entries
 
+def write_compressed(path: Path, data, use_compact=True):
+    import gzip
+    # compact JSON saves ~10 MB before gzip
+    if use_compact:
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        with open(path, "wb") as f:
+            f.write(raw)
+        # gzip with mtime=0 for deterministic output and max compression
+        gz_path = path.with_suffix(path.suffix + ".gz")
+        with open(path, "rb") as f_in:
+            with gzip.open(gz_path, "wb", compresslevel=9, mtime=0) as f_out:
+                f_out.write(f_in.read())
+        # brotli if available for smallest file
+        try:
+            import brotli
+            br_path = path.with_suffix(path.suffix + ".br")
+            br_data = brotli.compress(raw, quality=11, mode=brotli.MODE_TEXT)
+            with open(br_path, "wb") as bf:
+                bf.write(br_data)
+            print(f"[compress] {gz_path.name} {gz_path.stat().st_size/1024/1024:.2f} MB | {br_path.name} {br_path.stat().st_size/1024/1024:.2f} MB")
+        except Exception as e:
+            print(f"[compress] {gz_path.name} {gz_path.stat().st_size/1024/1024:.2f} MB (brotli not available: {e})")
+        return
+    # fallback pretty
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     BY_CONSOLE_DIR.mkdir(parents=True, exist_ok=True)
@@ -181,10 +208,9 @@ def main():
     # Sort by company then console then title for deterministic output
     entries.sort(key=lambda x: (x["company"], x["console"], x["title"].lower()))
 
-    # Write main index
+    # Write main index + compressed
     out_main = DATA_DIR / "roms.json"
-    with open(out_main, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=2)
+    write_compressed(out_main, entries, use_compact=True)
     print(f"[write] {out_main} ({out_main.stat().st_size / 1024 / 1024:.2f} MB)")
 
     # Write sharded by console
@@ -197,8 +223,7 @@ def main():
     for key, items in by_console.items():
         safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", key).strip("_")
         out = BY_CONSOLE_DIR / f"{safe}.json"
-        with open(out, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
+        write_compressed(out, items, use_compact=True)
         print(f"[shard] {key}: {len(items)} -> {out.name}")
 
     # Write meta
