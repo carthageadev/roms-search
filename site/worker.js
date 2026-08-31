@@ -1,5 +1,5 @@
 /* ROMs Search Worker - runs MiniSearch off main thread */
-importScripts('https://cdn.jsdelivr.net/npm/minisearch@6.3.0/dist/umd/index.min.js');
+importScripts('./minisearch.js');
 
 let allDocs = [];
 let byId = new Map();
