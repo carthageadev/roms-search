@@ -17,8 +17,29 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://92.35.124.13"
-# MVP scope - Nintendo + SEGA only as requested
-TARGET_ROOTS = ["/Nintendo", "/SEGA"]
+# Expanded scope - common consoles + arcade (MAME, Neo Geo, etc.)
+TARGET_ROOTS = [
+    "/Nintendo",
+    "/SEGA",
+    "/SONY",
+    "/SNK",
+    "/NEC",
+    "/Atari",
+    "/Arcade",
+    "/Panasonic - 3DO",
+    "/Microsoft",
+    "/Commodore",
+    "/Bandai",
+    "/ColecoVision",
+    "/Magnavox - Odyssey 2",
+    "/Mattel",
+    "/GCE - Vectrex",
+    "/Sinclair - ZX Spectrum +3",
+    "/Sharp",
+    "/Philips - Videopac+",
+    "/Amstrad - CPC",
+    "/Apple",
+]
 
 # Output paths (repo root / data)
 ROOT = Path(__file__).parent.parent
@@ -180,9 +201,8 @@ def write_compressed(path: Path, data, use_compact=True):
             f.write(raw)
         # gzip with mtime=0 for deterministic output and max compression
         gz_path = path.with_suffix(path.suffix + ".gz")
-        with open(path, "rb") as f_in:
-            with gzip.open(gz_path, "wb", compresslevel=9, mtime=0) as f_out:
-                f_out.write(f_in.read())
+        with gzip.GzipFile(gz_path, "wb", compresslevel=9, mtime=0) as f_out:
+            f_out.write(raw)
         # brotli if available for smallest file
         try:
             import brotli
