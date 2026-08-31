@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROMs Search — Nintendo + SEGA</title>
+<link rel="stylesheet" href="./style.css">
+<meta name="description" content="Fast search over Nintendo & SEGA ROMs from 92.35.124.13 — 67k files indexed weekly">
+</head>
+<body>
+<header>
+  <h1><span>ROMs</span> Search <span class="badge">Nintendo + SEGA</span></h1>
+  <div class="search-wrap">
+    <input id="q" type="text" placeholder="Search &quot;zelda&quot;, &quot;mario&quot;, &quot;sonic&quot; ... (instant)" autocomplete="off">
+    <button id="clearBtn">Clear</button>
+  </div>
+</header>
+
+<div class="controls">
+  <label>Company <select id="companyFilter"><option value="">All companies</option></select></label>
+  <label>Console <select id="consoleFilter"><option value="">All consoles</option></select></label>
+  <label>Folder <input id="folderFilter" type="text" placeholder="e.g. /Nintendo/Wii"></label>
+  <label>Sort by <select id="sortBy">
+    <option value="relevance">Relevance</option>
+    <option value="title-asc">Title A→Z</option>
+    <option value="title-desc">Title Z→A</option>
+    <option value="console-asc">Console A→Z</option>
+    <option value="company-asc">Company A→Z</option>
+    <option value="size-desc">Size ↓</option>
+    <option value="size-asc">Size ↑</option>
+    <option value="date-desc">Date ↓</option>
+  </select></label>
+  <span class="pill" id="countPill">Loading index…</span>
+</div>
+
+<p id="stats"></p>
+<main>
+  <div id="grid" class="grid"></div>
+  <div class="pagination">
+    <button id="prevBtn">← Prev</button>
+    <span id="pageInfo" class="pill"></span>
+    <button id="nextBtn">Next →</button>
+  </div>
+</main>
+
+<footer>
+  <div>Base: <code>https://92.35.124.13</code> · Indexed weekly via GitHub Actions · Data: <a href="../data/roms.json" style="color:#8ea0ff">roms.json</a> · <a href="../data/meta.json" style="color:#8ea0ff">meta.json</a></div>
+  <div style="margin-top:6px">Tip: type <code>zelda</code> for instant results. Sorting by console/company/folder works even with a search active.</div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/minisearch@6.3.0/dist/umd/index.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

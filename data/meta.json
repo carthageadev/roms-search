@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-08-31T00:35:05Z",
+  "baseUrl": "https://92.35.124.13",
+  "targets": [
+    "/Nintendo",
+    "/SEGA"
+  ],
+  "totalFiles": 67302,
+  "companies": [
+    "Nintendo",
+    "SEGA"
+  ],
+  "consoles": [
+    "3DS",
+    "64",
+    "Beena",
+    "DS",
+    "DreamCast",
+    "Famicom",
+    "Game & Watch",
+    "Game Boy",
+    "Game Boy Advance",
+    "Game Boy Color",
+    "Game Gear",
+    "GameCube",
+    "Genesis",
+    "Master System",
+    "Pico",
+    "Pokémon Mini",
+    "SG-1000",
+    "Saturn",
+    "Super Famicom",
+    "Virtual Boy",
+    "Wii",
+    "Wii U",
+    "amiibo"
+  ],
+  "byConsoleCounts": {
+    "Nintendo - 3DS": 2220,
+    "Nintendo - 64": 1387,
+    "Nintendo - DS": 11377,
+    "Nintendo - Famicom": 9872,
+    "Nintendo - Game & Watch": 53,
+    "Nintendo - Game Boy": 2613,
+    "Nintendo - Game Boy Advance": 7462,
+    "Nintendo - Game Boy Color": 3082,
+    "Nintendo - GameCube": 2096,
+    "Nintendo - Pokémon Mini": 52,
+    "Nintendo - Super Famicom": 6332,
+    "Nintendo - Virtual Boy": 89,
+    "Nintendo - Wii": 6688,
+    "Nintendo - Wii U": 540,
+    "Nintendo - amiibo": 947,
+    "SEGA - Beena": 58,
+    "SEGA - DreamCast": 1613,
+    "SEGA - Game Gear": 967,
+    "SEGA - Genesis": 5298,
+    "SEGA - Master System": 1269,
+    "SEGA - Pico": 447,
+    "SEGA - SG-1000": 253,
+    "SEGA - Saturn": 2587
+  }
+}
