@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+# ROM index bloat — only gzip + meta are deployed (7 MB), rest is ephemeral
+data/roms.json
+data/*.br
+data/by-console/
+clean_fix.py

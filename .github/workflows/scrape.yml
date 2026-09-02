@@ -33,11 +33,13 @@ jobs:
       - run: pip install -r scraper/requirements.txt
       - name: Run scraper (IP mode)
         run: python scraper/scraper.py
-      - name: Commit data if changed
+      - name: Commit data if changed (only gzip + meta — smallest)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/roms.json data/roms.json.gz data/roms.json.br data/meta.json data/by-console/*.json data/by-console/*.gz data/by-console/*.br || true
+          git add data/roms.json.gz data/meta.json || true
+          # also add raw roms.json if present (optional, not needed for deploy)
+          git add data/roms.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "chore: update index $(date -u +%Y-%m-%dT%H:%M:%SZ) [skip ci]"
           git push || true
 
@@ -54,16 +56,11 @@ jobs:
           ref: main
       - name: Prepare Pages artifact (site + data)
         run: |
-          mkdir -p _site/data/by-console
+          mkdir -p _site/data
           cp -r site/* _site/
           cp data/roms.json _site/data/ 2>/dev/null || echo "no roms.json"
           cp data/roms.json.gz _site/data/ 2>/dev/null || echo "no gz"
-          cp data/roms.json.br _site/data/ 2>/dev/null || echo "no br"
           cp data/meta.json _site/data/ 2>/dev/null || echo "no meta"
-          cp -r data/by-console _site/data/ 2>/dev/null || true
-          # also copy compressed shards if they exist
-          cp data/by-console/*.gz _site/data/by-console/ 2>/dev/null || true
-          cp data/by-console/*.br _site/data/by-console/ 2>/dev/null || true
           # fix relative paths: site expects ../data, but on Pages data is at /data
           # we keep _site/data alongside _site/index.html so ../data won't work on Pages root.
           # Patch app.js DATA_URL if needed - we copy data to _site/data and also to _site/../data via symlink trick:

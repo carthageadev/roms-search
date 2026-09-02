@@ -2,7 +2,7 @@
 """
 ROMs Index Scraper - IP-based
 Crawls https://92.35.124.13 directly (no DNS, no cert verify) for Nintendo + SEGA
-Outputs: data/roms.json and data/by-console/*.json
+Outputs: data/roms.json.gz (gzip max, mtime=0) + data/meta.json only
 """
 import json
 import time
@@ -44,7 +44,6 @@ TARGET_ROOTS = [
 # Output paths (repo root / data)
 ROOT = Path(__file__).parent.parent
 DATA_DIR = ROOT / "data"
-BY_CONSOLE_DIR = DATA_DIR / "by-console"
 
 HEADERS = {
     "User-Agent": "roms-search-scraper/1.0 (+https://github.com/carthageadev/roms-search)"
@@ -157,9 +156,13 @@ def crawl():
 
             # Derive company / console from path
             # href = /Nintendo/Game Boy Advance/file.7z
+            # For single-level roots like /Amstrad - CPC/file.7z, console is empty
             parts = href.strip("/").split("/")
             company = parts[0] if len(parts) > 0 else ""
-            console = parts[1] if len(parts) > 1 else ""
+            if len(parts) <= 2:
+                console = ""
+            else:
+                console = parts[1]
             # folder path without filename
             folder_path = "/" + "/".join(parts[:-1]) if len(parts) > 1 else "/"
 
@@ -194,33 +197,22 @@ def crawl():
 
 def write_compressed(path: Path, data, use_compact=True):
     import gzip
-    # compact JSON saves ~10 MB before gzip
+    # smallest deploy file: compact JSON + gzip max (9) + mtime=0, no brotli — only .gz is committed
     if use_compact:
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        # write raw locally for worker fallback / debugging (gitignored)
         with open(path, "wb") as f:
             f.write(raw)
-        # gzip with mtime=0 for deterministic output and max compression
         gz_path = path.with_suffix(path.suffix + ".gz")
         with gzip.GzipFile(gz_path, "wb", compresslevel=9, mtime=0) as f_out:
             f_out.write(raw)
-        # brotli if available for smallest file
-        try:
-            import brotli
-            br_path = path.with_suffix(path.suffix + ".br")
-            br_data = brotli.compress(raw, quality=11, mode=brotli.MODE_TEXT)
-            with open(br_path, "wb") as bf:
-                bf.write(br_data)
-            print(f"[compress] {gz_path.name} {gz_path.stat().st_size/1024/1024:.2f} MB | {br_path.name} {br_path.stat().st_size/1024/1024:.2f} MB")
-        except Exception as e:
-            print(f"[compress] {gz_path.name} {gz_path.stat().st_size/1024/1024:.2f} MB (brotli not available: {e})")
+        print(f"[compress] {gz_path.name} {gz_path.stat().st_size/1024/1024:.2f} MB (max gzip, mtime=0, level=9)")
         return
-    # fallback pretty
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    BY_CONSOLE_DIR.mkdir(parents=True, exist_ok=True)
 
     entries = crawl()
     print(f"[done] total files={len(entries)}")
@@ -228,25 +220,18 @@ def main():
     # Sort by company then console then title for deterministic output
     entries.sort(key=lambda x: (x["company"], x["console"], x["title"].lower()))
 
-    # Write main index + compressed
+    # Write main index + compressed (only gzip needed)
     out_main = DATA_DIR / "roms.json"
     write_compressed(out_main, entries, use_compact=True)
-    print(f"[write] {out_main} ({out_main.stat().st_size / 1024 / 1024:.2f} MB)")
+    print(f"[write] {out_main} ({out_main.stat().st_size / 1024 / 1024:.2f} MB) + {out_main}.gz")
 
-    # Write sharded by console
+    # Write meta (no by-console shards — frontend only uses roms.json.gz)
     from collections import defaultdict
     by_console = defaultdict(list)
     for e in entries:
         key = f"{e['company']} - {e['console']}" if e['console'] else e['company']
         by_console[key].append(e)
 
-    for key, items in by_console.items():
-        safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", key).strip("_")
-        out = BY_CONSOLE_DIR / f"{safe}.json"
-        write_compressed(out, items, use_compact=True)
-        print(f"[shard] {key}: {len(items)} -> {out.name}")
-
-    # Write meta
     meta = {
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "baseUrl": BASE_URL,
