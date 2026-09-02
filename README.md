@@ -1,13 +1,11 @@
-# roms-search
+# atlas
 
-Search engine for https://92.35.124.13.
+ROM search for https://92.35.124.13.
 
-Indexes Nintendo and SEGA. Search is instant in the browser.
-
-Live: https://carthageadev.github.io/roms-search/
+Live: https://carthageadev.github.io/atlas/
 
 ## How it works
-Scraper crawls the IP weekly and builds `data/roms.json`. Frontend uses that JSON for search.
+Scraper crawls the IP weekly and builds `data/roms.json.gz`. Frontend loads the gzip and searches in the browser.
 
 ## Run locally
 ```
@@ -20,9 +18,9 @@ python -m http.server 8000
 ## Layout
 ```
 scraper/  crawler
-data/     roms.json + by-console + meta.json
+data/     roms.json.gz + meta.json
 site/     static frontend
 ```
 
 ## Deploy
-GitHub Actions runs weekly. It scrapes, commits data, and deploys to Pages.
+GitHub Actions runs weekly. It scrapes and deploys to Pages.
