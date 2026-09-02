@@ -1,4 +1,4 @@
-/* ROMs Search Worker - runs MiniSearch off main thread */
+/* atlas Worker - MiniSearch off main thread + cached index */
 importScripts('./minisearch.js');
 
 let allDocs = [];
@@ -8,35 +8,121 @@ let ready = false;
 
 function send(type, payload){ self.postMessage({type, ...payload}); }
 
+// --- IndexedDB cache for decompressed docs ---
+const DB_NAME = 'atlas-cache';
+const STORE = 'indexes';
+const CACHE_KEY = 'current';
+
+function openDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => { try{ r.result.createObjectStore(STORE); }catch{} };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function getCached(){
+  try{
+    const db = await openDB();
+    return await new Promise((res) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(CACHE_KEY);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  }catch{ return null; }
+}
+async function setCached(version, docs){
+  try{
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put({ version, docs, savedAt: Date.now() }, CACHE_KEY);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+    // also clean old Cache API entries if any
+    try{ if(self.caches){ const keys = await caches.keys(); for(const k of keys) if(k.startsWith('atlas-gz-') && k !== 'atlas-gz-' + version) await caches.delete(k); } }catch{}
+  }catch(e){ /* quota or private mode */ }
+}
+async function clearCached(){
+  try{
+    const db = await openDB();
+    await new Promise(res => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(CACHE_KEY);
+      tx.oncomplete = () => res();
+      tx.onerror = () => res();
+    });
+  }catch{}
+}
+async function fetchMeta(url){
+  if(!url) return null;
+  try{ const r = await fetch(url, { cache: 'no-store' }); if(r.ok) return await r.json(); }catch{}
+  return null;
+}
+
 self.onmessage = async (e) => {
   const msg = e.data;
   if (msg.type === 'load') {
     try {
-      // Prefer compressed .gz (3.3 MB) then .br then raw
-      const tryUrls = [msg.dataUrl + '.gz', msg.dataUrl + '.br', msg.dataUrl];
+      // 1) fetch meta first to get version for cache key
+      let meta = await fetchMeta(msg.metaUrl);
+      const version = meta && meta.generatedAt ? meta.generatedAt : null;
+
+      // 2) try IndexedDB cache
+      let cached = await getCached();
+      if(cached && cached.version && cached.version === version && Array.isArray(cached.docs) && cached.docs.length){
+        send('progress', {text: `Loading cached index…`});
+        allDocs = cached.docs;
+        byId = new Map(allDocs.map(d=>[d.id,d]));
+        miniSearch = new MiniSearch({
+          fields: ['title','company','console','folder','searchText'],
+          storeFields: ['title','href','url','company','console','folder','size','sizeBytes','date'],
+          searchOptions: { prefix: true, fuzzy: 0.2, combineWith: 'AND' },
+          idField: 'id'
+        });
+        const CHUNK = 5000;
+        for(let i=0;i<allDocs.length;i+=CHUNK){
+          miniSearch.addAll(allDocs.slice(i, i+CHUNK));
+          if(i % 20000 === 0) send('progress', {text: `Indexing cached ${Math.min(i+CHUNK, allDocs.length).toLocaleString()} / ${allDocs.length.toLocaleString()}…`});
+          await new Promise(r=> setTimeout(r, 0));
+        }
+        ready = true;
+        const companies = [...new Set(allDocs.map(d=>d.company))].sort();
+        const consoles = [...new Set(allDocs.map(d=>d.console))].sort();
+        send('ready', {total: allDocs.length, companies, consoles, meta});
+        return;
+      }
+      // stale version -> clear old bloat before fetching new
+      if(cached && cached.version && cached.version !== version){
+        send('progress', {text: `Updating index…`});
+        await clearCached();
+      }
+
+      // 3) fetch gzip (prefer .gz) with Cache API to avoid redownload
+      const tryUrls = [msg.dataUrl + '.gz', msg.dataUrl];
       let buffer = null;
       for(const u of tryUrls){
         try{
           send('progress', {text: `Fetching ${u.split('/').pop()}…`});
-          const res = await fetch(u);
-          if(!res.ok) continue;
+          let res = null;
+          // try Cache API first
+          try{ if(self.caches){ const cache = await caches.open('atlas-gz-' + (version||'nogz')); const hit = await cache.match(u); if(hit) res = hit; } }catch{}
+          if(!res){
+            res = await fetch(u);
+            if(!res.ok) continue;
+            // store gzip in Cache API for next load
+            try{ if(self.caches && u.endsWith('.gz')){ const cache = await caches.open('atlas-gz-' + (version||'nogz')); await cache.put(u, res.clone()); } }catch{}
+          }
           if(u.endsWith('.gz')){
             send('progress', {text: 'Decompressing gzip…'});
-            // DecompressionStream is native in modern browsers
             if(typeof DecompressionStream !== 'undefined'){
               const ds = new DecompressionStream('gzip');
               const decompressed = res.body.pipeThrough(ds);
               const text = await new Response(decompressed).text();
               buffer = JSON.parse(text);
-            } else {
-              // fallback: fetch as arrayBuffer and let server handle? try plain
-              const ab = await res.arrayBuffer();
-              // if no DecompressionStream, we cannot decompress, try next url
-              continue;
-            }
-          } else if(u.endsWith('.br')){
-            // brotli not natively supported via DecompressionStream, skip unless we bundle decoder
-            continue;
+            } else { continue; }
           } else {
             const total = parseInt(res.headers.get('Content-Length')||'0',10);
             if(res.body && total){
@@ -61,7 +147,7 @@ self.onmessage = async (e) => {
             }
           }
           if(buffer) break;
-        }catch(e){ continue; }
+        }catch(err){ continue; }
       }
       if(!buffer) throw new Error('Failed to fetch any index variant');
       allDocs = buffer;
@@ -74,19 +160,14 @@ self.onmessage = async (e) => {
         searchOptions: { prefix: true, fuzzy: 0.2, combineWith: 'AND' },
         idField: 'id'
       });
-      // Chunked add to avoid blocking worker too long and to report progress
       const CHUNK = 5000;
       for(let i=0;i<allDocs.length;i+=CHUNK){
         miniSearch.addAll(allDocs.slice(i, i+CHUNK));
         send('progress', {text: `Indexing ${Math.min(i+CHUNK, allDocs.length).toLocaleString()} / ${allDocs.length.toLocaleString()}…`});
-        // yield to event loop
         await new Promise(r=> setTimeout(r, 0));
       }
-      // fetch meta if provided
-      let meta = null;
-      if(msg.metaUrl){
-        try{ const mr = await fetch(msg.metaUrl); if(mr.ok) meta = await mr.json(); }catch{}
-      }
+      // save decompressed docs to IDB for next instant open, then clean old version already cleared
+      if(version) await setCached(version, allDocs);
       ready = true;
       const companies = [...new Set(allDocs.map(d=>d.company))].sort();
       const consoles = [...new Set(allDocs.map(d=>d.console))].sort();
